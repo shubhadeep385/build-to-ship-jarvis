@@ -1,0 +1,57 @@
+name: ULTRON world feed isolation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/jarvis-ultron.js'
+      - '.github/workflows/ultron-worldfeed-stabilize.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  isolate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Disable the legacy ULTRON world-player startup
+        shell: python
+        run: |
+          from pathlib import Path
+
+          p = Path('docs/jarvis-ultron.js')
+          s = p.read_text(encoding='utf-8')
+          marker = '/* ULTRON_WORLD_FEED_LEGACY_STARTUP_DISABLED */'
+
+          if marker in s:
+              print('Legacy world feed startup is already disabled.')
+              raise SystemExit(0)
+
+          needle = 'startWorldEmbed();'
+          if needle not in s:
+              raise SystemExit('Expected legacy ULTRON world-feed startup call was not found; refusing to modify the core.')
+
+          replacement = marker + ' void 0;'
+          s = s.replace(needle, replacement, 1)
+          p.write_text(s, encoding='utf-8')
+          print('Disabled exactly one legacy world-feed startup call.')
+
+      - name: Validate only the changed ULTRON core
+        run: node --check docs/jarvis-ultron.js
+
+      - name: Commit the isolated ULTRON change
+        shell: bash
+        run: |
+          if git diff --quiet -- docs/jarvis-ultron.js; then
+            echo 'No core change required.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/jarvis-ultron.js
+          git commit -m 'Isolate ULTRON world feed from legacy player'
+          git push
