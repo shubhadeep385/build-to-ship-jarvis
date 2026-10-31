@@ -13,6 +13,13 @@ const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const OLLAMA_BASE_URL = String(process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434").replace(/\/+$/, "");
 const OLLAMA_MODEL = String(process.env.OLLAMA_MODEL || "llama3.2").trim();
+const DOWNLOADS_DIR = path.join(os.homedir(), "Downloads");
+const WINDOWS_DOWNLOADS = {
+  spotify: { file: "SpotifySetup.exe", url: "https://download.scdn.co/SpotifySetup.exe" },
+  discord: { file: "DiscordSetup.exe", url: "https://discord.com/api/download?platform=win" },
+  steam: { file: "SteamSetup.exe", url: "https://cdn.akamai.steamstatic.com/client/installer/SteamSetup.exe" },
+  ollama: { file: "OllamaSetup.exe", url: "https://ollama.com/download/OllamaSetup.exe" }
+};
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -65,40 +72,139 @@ function quote(text) {
   if (IS_WINDOWS) {
     return `"${String(text).replace(/"/g, '\\"')}"`;
   }
-
-  async function askOllama(message) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 45000);
-    try {
-      const response = await fetch(OLLAMA_BASE_URL + "/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: OLLAMA_MODEL,
-          stream: false,
-          messages: [
-            { role: "system", content: "You are JARVIS, a concise, helpful local personal AI assistant. Do not claim to control devices or perform actions unless JARVIS local tools confirm it." },
-            { role: "user", content: message }
-          ]
-        }),
-        signal: controller.signal
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data?.error || `Ollama returned HTTP ${response.status}`);
-      const text = String(data?.message?.content || "").trim();
-      if (!text) throw new Error("Ollama returned no text.");
-      return text;
-    } catch (error) {
-      if (error?.name === "AbortError") throw new Error("Ollama timed out after 45 seconds.");
-      if (error?.code === "ECONNREFUSED" || /fetch failed/i.test(String(error?.message))) {
-        throw new Error(`Ollama is not running at ${OLLAMA_BASE_URL}. Start Ollama and run: ollama pull ${OLLAMA_MODEL}`);
-      }
-      throw error;
-    } finally {
-      clearTimeout(timeout);
-    }
-  }
   return "'" + String(text).replace(/'/g, "'\\''") + "'";
+}
+
+async function downloadWindowsInstaller(appName) {
+  const key = String(appName || "").trim().toLowerCase();
+  const installer = WINDOWS_DOWNLOADS[key];
+  if (!installer) {
+    throw new Error(`${appName} does not have a supported direct Windows installer. Use its official store or website.`);
+  }
+  await fs.promises.mkdir(DOWNLOADS_DIR, { recursive: true });
+  const response = await fetch(installer.url, { redirect: "follow" });
+  if (!response.ok) throw new Error(`Official download returned HTTP ${response.status}.`);
+  const data = Buffer.from(await response.arrayBuffer());
+  if (!data.length) throw new Error("The official download was empty.");
+  const destination = path.join(DOWNLOADS_DIR, installer.file);
+  await fs.promises.writeFile(destination, data);
+  return { destination, bytes: data.length };
+}
+
+function isPermittedMusicLicense(value) {
+  return /creativecommons\.org|publicdomain|public domain|cc0/i.test(String(value || ""));
+}
+
+async function downloadLegalMusic(title) {
+  const searchUrl = "https://archive.org/advancedsearch.php?q=" +
+    encodeURIComponent(`title:("${title}") AND mediatype:audio`) +
+    "&fl[]=identifier,title&rows=10&page=1&output=json";
+  const searchResponse = await fetch(searchUrl);
+  if (!searchResponse.ok) throw new Error("The legal music search service is unavailable.");
+  const searchData = await searchResponse.json();
+  const docs = Array.isArray(searchData?.response?.docs) ? searchData.response.docs : [];
+
+  for (const doc of docs) {
+    const identifier = String(doc.identifier || "").trim();
+    if (!identifier) continue;
+    const metadataResponse = await fetch(`https://archive.org/metadata/${encodeURIComponent(identifier)}`);
+    if (!metadataResponse.ok) continue;
+    const metadata = await metadataResponse.json();
+    const license = [
+      metadata?.metadata?.licenseurl,
+      metadata?.metadata?.license,
+      metadata?.metadata?.rights
+    ].filter(Boolean).join(" ");
+    if (!isPermittedMusicLicense(license)) continue;
+
+    const files = Array.isArray(metadata.files) ? metadata.files : [];
+    const audio = files
+      .filter((file) => /\.(mp3|ogg|flac|wav)$/i.test(String(file.name || "")))
+      .sort((a, b) => /\.(mp3)$/i.test(b.name) - /\.(mp3)$/i.test(a.name))[0];
+    if (!audio?.name) continue;
+
+    const safeTitle = String(doc.title || title).replace(/[<>:"/\\|?*]+/g, "_").trim().slice(0, 100);
+    const extension = path.extname(audio.name).toLowerCase() || ".audio";
+    const destination = path.join(DOWNLOADS_DIR, `${safeTitle || "legal-music"}${extension}`);
+    const fileResponse = await fetch(`https://archive.org/download/${encodeURIComponent(identifier)}/${audio.name}`);
+    if (!fileResponse.ok) continue;
+    const data = Buffer.from(await fileResponse.arrayBuffer());
+    if (!data.length) continue;
+    await fs.promises.mkdir(DOWNLOADS_DIR, { recursive: true });
+    await fs.promises.writeFile(destination, data);
+    return { destination, bytes: data.length, license, source: identifier };
+  }
+  throw new Error(`No Creative Commons or public-domain recording was found for "${title}".`);
+}
+
+async function findLegalMusicPreview(title) {
+  const query = String(title || "").trim();
+  if (!query) throw new Error("Tell me which music to play.");
+  const searchUrl = "https://archive.org/advancedsearch.php?q=" +
+    encodeURIComponent(`title:("${query}") AND mediatype:audio`) +
+    "&fl[]=identifier,title&rows=10&page=1&output=json";
+  const searchResponse = await fetch(searchUrl);
+  if (!searchResponse.ok) throw new Error("The legal music search service is unavailable.");
+  const searchData = await searchResponse.json();
+  const docs = Array.isArray(searchData?.response?.docs) ? searchData.response.docs : [];
+
+  for (const doc of docs) {
+    const identifier = String(doc.identifier || "").trim();
+    if (!identifier) continue;
+    const metadataResponse = await fetch(`https://archive.org/metadata/${encodeURIComponent(identifier)}`);
+    if (!metadataResponse.ok) continue;
+    const metadata = await metadataResponse.json();
+    const license = [
+      metadata?.metadata?.licenseurl,
+      metadata?.metadata?.license,
+      metadata?.metadata?.rights
+    ].filter(Boolean).join(" ");
+    if (!isPermittedMusicLicense(license)) continue;
+    const audio = (Array.isArray(metadata.files) ? metadata.files : [])
+      .filter((file) => /\.(mp3|ogg|wav)$/i.test(String(file.name || "")))
+      .sort((a, b) => /\.(mp3)$/i.test(b.name) - /\.(mp3)$/i.test(a.name))[0];
+    if (!audio?.name) continue;
+    return {
+      title: String(doc.title || query),
+      url: `https://archive.org/download/${encodeURIComponent(identifier)}/${encodeURIComponent(audio.name)}`,
+      license,
+      source: identifier
+    };
+  }
+  throw new Error(`No Creative Commons or public-domain playable recording was found for "${query}".`);
+}
+
+async function askOllama(message) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 45000);
+  try {
+    const response = await fetch(OLLAMA_BASE_URL + "/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: OLLAMA_MODEL,
+        stream: false,
+        messages: [
+          { role: "system", content: "You are JARVIS, a concise, helpful local personal AI assistant. Do not claim to control devices or perform actions unless JARVIS local tools confirm it." },
+          { role: "user", content: message }
+        ]
+      }),
+      signal: controller.signal
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data?.error || `Ollama returned HTTP ${response.status}`);
+    const text = String(data?.message?.content || "").trim();
+    if (!text) throw new Error("Ollama returned no text.");
+    return text;
+  } catch (error) {
+    if (error?.name === "AbortError") throw new Error("Ollama timed out after 45 seconds.");
+    if (error?.code === "ECONNREFUSED" || /fetch failed/i.test(String(error?.message))) {
+      throw new Error(`Ollama is not running at ${OLLAMA_BASE_URL}. Start Ollama and run: ollama pull ${OLLAMA_MODEL}`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 // ═══════════════════════════════════════
@@ -461,6 +567,7 @@ app.post("/api/command", async (req, res) => {
       minute: "2-digit",
       second: "2-digit"
     });
+
     return reply(res, `The current time is ${time}.`);
   }
 
@@ -531,6 +638,13 @@ app.post("/api/command", async (req, res) => {
     const text = encodeURIComponent(search[1]);
     await openUrl(`https://www.google.com/search?q=${text}`);
     return reply(res, `Searching Google for ${search[1]}.`);
+  }
+
+  const youtubeSearch = query.match(/^(?:search|find|play|watch|show)\s+(.+?)\s+(?:on|in)\s+youtube$/);
+  if (youtubeSearch) {
+    const text = encodeURIComponent(youtubeSearch[1]);
+    await openUrl(`https://www.youtube.com/results?search_query=${text}`);
+    return reply(res, `Searching YouTube for ${youtubeSearch[1]}.`);
   }
 
   // YouTube / Google / URL
@@ -651,6 +765,52 @@ app.get("/api/status", (req, res) => {
     timers: timers.size,
     timestamp: new Date().toISOString()
   });
+});
+
+app.post("/api/download", async (req, res) => {
+  const appName = String(req.body.app || "").trim();
+  if (!appName) return res.status(400).json({ ok: false, reply: "Tell me which app to download." });
+  try {
+    const result = await downloadWindowsInstaller(appName);
+    return reply(res, `${appName} installer downloaded to ${result.destination}. It was not opened or installed.`, {
+      mode: "download",
+      path: result.destination,
+      bytes: result.bytes
+    });
+
+  } catch (error) {
+    return res.status(400).json({ ok: false, reply: error.message, mode: "download" });
+  }
+});
+
+app.post("/api/music/download", async (req, res) => {
+  const title = String(req.body.title || "").trim();
+  if (!title) return res.status(400).json({ ok: false, reply: "Tell me the music title to download." });
+  try {
+    const result = await downloadLegalMusic(title);
+    return reply(res, `Legal music download saved to ${result.destination}. License verified as ${result.license}.`, {
+      mode: "legal-music-download",
+      path: result.destination,
+      bytes: result.bytes,
+      source: result.source
+    });
+
+  } catch (error) {
+    return res.status(404).json({ ok: false, reply: error.message, mode: "legal-music-download" });
+  }
+});
+
+app.post("/api/music/preview", async (req, res) => {
+  const title = String(req.body.title || "").trim();
+  try {
+    const result = await findLegalMusicPreview(title);
+    return reply(res, `Playing ${result.title} in the JARVIS background player.`, {
+      mode: "music-preview",
+      ...result
+    });
+  } catch (error) {
+    return res.status(404).json({ ok: false, reply: error.message, mode: "music-preview" });
+  }
 });
 
 app.listen(PORT, "127.0.0.1", () => {

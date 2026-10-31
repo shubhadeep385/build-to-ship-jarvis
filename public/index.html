@@ -2031,6 +2031,52 @@ body::after {
     z-index: 50;
 }
 
+.jarvis-music-player {
+    position: fixed;
+    left: 50%;
+    bottom: 18px;
+    transform: translateX(-50%);
+    width: min(92vw, 620px);
+    z-index: 60;
+    display: none;
+    padding: 10px 14px;
+    border: 1px solid rgba(0, 225, 255, .55);
+    border-radius: 12px;
+    background: rgba(1, 15, 31, .94);
+    box-shadow: 0 0 24px rgba(0, 180, 255, .18);
+    backdrop-filter: blur(14px);
+}
+
+.jarvis-music-player.visible { display: block; }
+.jarvis-music-player-title {
+    overflow: hidden;
+    margin-bottom: 7px;
+    color: #baf7ff;
+    font: 12px/1.3 system-ui, sans-serif;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.jarvis-music-player-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.jarvis-music-player-close {
+    margin-left: auto;
+    color: #ffb8b8 !important;
+    border-color: rgba(255, 107, 107, .55) !important;
+}
+.jarvis-music-player button {
+    min-width: 34px;
+    padding: 5px 9px;
+    border: 1px solid rgba(0, 225, 255, .5);
+    border-radius: 6px;
+    background: rgba(0, 120, 180, .2);
+    color: #d8fbff;
+    cursor: pointer;
+}
+.jarvis-music-player audio { flex: 1; min-width: 120px; height: 30px; }
+
 
 .command-input {
 
@@ -3228,6 +3274,17 @@ body.thinking
 
 </form>
 
+<section id="jarvisMusicPlayer" class="jarvis-music-player" aria-label="JARVIS music player">
+    <div id="jarvisMusicTitle" class="jarvis-music-player-title">JARVIS BACKGROUND AUDIO</div>
+    <div class="jarvis-music-player-controls">
+        <button id="jarvisMusicPrevious" type="button" aria-label="Previous track">PREV</button>
+        <button id="jarvisMusicPlay" type="button" aria-label="Play or pause">PLAY</button>
+        <button id="jarvisMusicNext" type="button" aria-label="Next track">NEXT</button>
+        <audio id="jarvisMusicAudio" controls preload="none"></audio>
+        <button id="jarvisMusicClose" class="jarvis-music-player-close" type="button" aria-label="Remove music controller">CLOSE</button>
+    </div>
+</section>
+
 
 </div>
 
@@ -3245,6 +3302,75 @@ const systemStatus   = document.getElementById("systemStatus");
 const loadValue      = document.getElementById("loadValue");
 const satCount       = document.getElementById("satCount");
 const airCount       = document.getElementById("airCount");
+const musicPlayer    = document.getElementById("jarvisMusicPlayer");
+const musicTitle     = document.getElementById("jarvisMusicTitle");
+const musicAudio     = document.getElementById("jarvisMusicAudio");
+const musicPlay      = document.getElementById("jarvisMusicPlay");
+const musicClose     = document.getElementById("jarvisMusicClose");
+let musicHistory = [];
+let musicHistoryIndex = -1;
+let musicRequestId = 0;
+
+function updateMusicControls() {
+  musicPlay.textContent = musicAudio.paused ? "PLAY" : "PAUSE";
+}
+
+async function playMusicPreview(title, announce = true) {
+  const requestId = ++musicRequestId;
+  const response = await fetch("/api/music/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.url) {
+    throw new Error(data.reply || "No playable legal preview was found.");
+  }
+  if (requestId !== musicRequestId) return;
+  musicTitle.textContent = `${data.title} // JARVIS BACKGROUND PLAYER`;
+  musicAudio.src = data.url;
+  musicPlayer.classList.add("visible");
+  musicHistory = musicHistory.slice(0, musicHistoryIndex + 1);
+  musicHistory.push(title);
+  musicHistoryIndex++;
+  await musicAudio.play();
+  updateMusicControls();
+  setState("idle");
+  if (announce) showAssistantReply(`Playing ${data.title} in the JARVIS background player. Spotify is not opened.`);
+}
+
+musicPlay.addEventListener("click", async () => {
+  if (!musicAudio.src) return;
+  if (musicAudio.paused) await musicAudio.play();
+  else musicAudio.pause();
+  updateMusicControls();
+});
+musicClose.addEventListener("click", () => {
+  musicRequestId++;
+  musicAudio.pause();
+  musicAudio.removeAttribute("src");
+  musicAudio.load();
+  musicPlayer.classList.remove("visible");
+  showAssistantReply("Music controller removed. The audio is paused.");
+});
+musicAudio.addEventListener("play", updateMusicControls);
+musicAudio.addEventListener("pause", updateMusicControls);
+musicAudio.addEventListener("ended", () => {
+  const next = musicHistory[musicHistoryIndex + 1];
+  if (next) playMusicPreview(next, false).catch(error => showAssistantReply(error.message, "error"));
+  else updateMusicControls();
+});
+document.getElementById("jarvisMusicPrevious").addEventListener("click", () => {
+  const previous = musicHistory[musicHistoryIndex - 1];
+  if (previous) {
+    musicHistoryIndex -= 2;
+    playMusicPreview(previous, false).catch(error => showAssistantReply(error.message, "error"));
+  }
+});
+document.getElementById("jarvisMusicNext").addEventListener("click", () => {
+  const next = musicHistory[musicHistoryIndex + 1];
+  if (next) playMusicPreview(next, false).catch(error => showAssistantReply(error.message, "error"));
+});
 
 function showAssistantReply(text, state = "reply") {
   let panel = document.getElementById("assistantReply");
@@ -3356,6 +3482,134 @@ async function sendCommand(command) {
   const isNexusLaunch = (hasNexus && (hasAction || hasNeon)) || isCentreLaunch;
   if (isNexusLaunch && window.NEON_NEXUS && typeof window.NEON_NEXUS.open === "function") {
     window.NEON_NEXUS.open();
+    return;
+  }
+
+  const openSearch = (url, message) => {
+    const link = document.createElement("a");
+    link.href = url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.hidden = true;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    const tab = true;
+    const result = tab
+      ? message
+      : "The browser blocked the new tab. Allow pop-ups for JARVIS and try again.";
+    showAssistantReply(result, tab ? "reply" : "error");
+    speak(result);
+    setState("idle");
+  };
+  const musicCommand = command.match(/^(?:please\s+)?(?:play|listen\s+to|put\s+on)\b(.*)$/i);
+  if (musicCommand) {
+    const rawMusic = musicCommand[1]
+      .replace(/\s+\bon\s+(?:spotify|youtube\s*music|youtube|apple\s+music)\b.*$/i, "")
+      .replace(/\s+\b(?:song|track|music)\s*$/i, "")
+      .trim();
+    const randomMusic = !rawMusic || /^(?:a\s+)?random(?:\s+song|\s+music|\s+track)?$/i.test(rawMusic);
+    const randomQueries = [
+      "Today's Top Hits",
+      "Discover Weekly",
+      "Mood Booster",
+      "All Out 2000s",
+      "lofi beats"
+    ];
+    const musicQuery = randomMusic
+      ? randomQueries[Math.floor(Math.random() * randomQueries.length)]
+      : rawMusic;
+    setState("thinking");
+    playMusicPreview(musicQuery).catch(error => {
+      if (error?.name === "AbortError" || error?.message === "MUSIC_CANCELLED") return;
+      setState("idle");
+      const spotifyUrl = "https://open.spotify.com/search/" + encodeURIComponent(musicQuery);
+      const link = document.createElement("a");
+      link.href = spotifyUrl;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.hidden = true;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      const fallbackMessage = `${error.message} Opening Spotify search results for ${musicQuery}.`;
+      showAssistantReply(fallbackMessage);
+      speak(fallbackMessage);
+    });
+    setState("idle");
+    return;
+  }
+  const musicDownload = command.match(/^(?:download|get|save)\s+(?:the\s+)?(?:song|music|track)\s+(.+)$/i);
+  if (musicDownload && musicDownload[1].trim()) {
+    const title = musicDownload[1].trim();
+    setState("thinking");
+    try {
+      const response = await fetch("/api/music/download", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title })
+      });
+      const data = await response.json();
+      const message = data.reply || "The legal music download did not return a result.";
+      showAssistantReply(message, response.ok ? "reply" : "error");
+      speak(message);
+    } catch (error) {
+      const message = "Music download failed: " + (error.message || "unknown error");
+      showAssistantReply(message, "error");
+      speak(message);
+    } finally {
+      setState("idle");
+    }
+    return;
+  }
+  const installCommand = command.match(/^(?:find\s+and\s+install|search\s+for\s+and\s+install|install|download|get)\s+(?:the\s+)?(?:app\s+)?(.+?)(?:\s+on\s+(?:my\s+)?(?:pc|computer|laptop|windows))?$/i);
+  if (installCommand && installCommand[1].trim()) {
+    const appName = installCommand[1].trim().replace(/\s+(?:application|app)$/i, "");
+    setState("thinking");
+    try {
+      const response = await fetch("/api/download", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ app: appName })
+      });
+      const data = await response.json();
+      const message = data.reply || "The download did not return a result.";
+      showAssistantReply(message, response.ok ? "reply" : "error");
+      speak(message);
+    } catch (error) {
+      const message = "Download failed: " + (error.message || "unknown error");
+      showAssistantReply(message, "error");
+      speak(message);
+    } finally {
+      setState("idle");
+    }
+    return;
+  }
+  const youtubeSearch = command.match(/^(?:search|find|play|watch|show|open)\s+(.+?)\s+(?:on|in)\s+youtube$/i)
+    || command.match(/^youtube\s+(?:search\s+for\s+)?(.+)$/i);
+  if (youtubeSearch && youtubeSearch[1].trim()) {
+    const video = youtubeSearch[1].trim();
+    openSearch(
+      "https://www.youtube.com/results?search_query=" + encodeURIComponent(video),
+      "Opening YouTube search results for " + video + "."
+    );
+    return;
+  }
+  const googleSearch = command.match(/^(?:search|look up|google)\s+(?:google\s+)?(?:for\s+)?(.+)$/i);
+  if (googleSearch && googleSearch[1].trim() && !/^(?:youtube|maps|drive|gmail)$/i.test(googleSearch[1].trim())) {
+    const query = googleSearch[1].trim();
+    openSearch(
+      "https://www.google.com/search?q=" + encodeURIComponent(query),
+      "Opening Google search results for " + query + "."
+    );
+    return;
+  }
+  const websiteCommand = command.match(/^(?:open|launch|visit|go to|navigate to)\s+((?:https?:\/\/)?(?:www\.)?[a-z0-9][a-z0-9.-]+\.[a-z]{2,}(?:\/\S*)?)$/i);
+  if (websiteCommand) {
+    const address = websiteCommand[1].match(/^https?:\/\//i)
+      ? websiteCommand[1]
+      : "https://" + websiteCommand[1];
+    openSearch(address, "Opening " + websiteCommand[1] + " in a new tab.");
     return;
   }
 
