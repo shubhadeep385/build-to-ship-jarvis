@@ -736,7 +736,7 @@ app.post("/api/command", async (req, res) => {
       console.error("[JARVIS AI] Local Ollama unavailable:", localError.message);
       return res.status(503).json({
         ok: false,
-        reply: `Gemini is unavailable (${error.message}), and the local model is unavailable (${localError.message}). Install/start Ollama and run "ollama pull ${OLLAMA_MODEL}", or check your Gemini key.`,
+        reply: "API KEY LIMIT REACHED",
         mode: "offline"
       });
     }

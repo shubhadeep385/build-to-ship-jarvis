@@ -158,7 +158,7 @@ app.post("/api/command", async (req, res) => {
     return res.json({ ok: true, reply: response.text || "I couldn't generate a response. Please try again.", model: JARVIS_MODEL });
   } catch (error) {
     console.error("[JARVIS AI] Request failed:", error?.message || error);
-    return res.status(502).json({ ok: false, reply: "My Gemini 2.5 Flash core is temporarily unavailable. Please check the backend Gemini key/model access and try again." });
+    return res.status(502).json({ ok: false, reply: "API KEY LIMIT REACHED" });
   }
 });
 
