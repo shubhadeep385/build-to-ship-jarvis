@@ -135,3 +135,70 @@ Do not switch to branch/folder publishing unless you intentionally want a differ
    Replace the example backend host with your actual service URL. Never put credentials in the URL.
 
 For details, see WEB_DEPLOYMENT.md.
+
+### C. Run the local backend
+
+The local path requires Node.js and the dependencies/configuration expected by the repository. Review server.js, gemini.cjs, and the deployment notes before running it on a machine. Configure required secrets locally through an environment file or environment variables that are excluded from version control. Do not publish a local server or expose its command routes to the internet.
+
+Because the local backend can run machine commands, only run it on a device you own or are authorized to administer, and inspect the exact command behavior before use.
+
+---
+
+## Security, privacy, and reliability
+
+JARVIS-AI is an evolving experimental project. Its current protections are not a security certification.
+
+- *API keys:* Keep secrets server-side. Rotate any key that may have been exposed and remove secrets from public code and logs.
+- *Hosted endpoint:* Origin checks are not authentication. Requests without an Origin header are accepted by the current middleware, and the process-local rate limit is not shared across instances. Configure provider quotas, alerts, and stronger abuse controls before broad public promotion.
+- *Local command execution:* The local backend uses shell execution. Keep it local-only and review all command call sites and input handling.
+- *Browser permissions:* Camera, microphone, speech, and related APIs depend on browser support and explicit user permission.
+- *Third-party services:* AI providers, satellite feeds, APIs, browsers, and external integrations may change, become unavailable, or enforce quotas.
+- *Data and privacy:* Use test data in demos. Do not record real private messages, account tokens, passwords, or sensitive files.
+- *Limitations:* A successful build or JavaScript syntax check does not prove every feature works end-to-end.
+
+See the [initial security review](docs/SECURITY_REVIEW.md) and [manual testing checklist](docs/TESTING_CHECKLIST.md).
+
+---
+
+## Testing and project status
+
+The GitHub Actions workflow runs node --check on a set of browser modules, verifies selected project-specific markers, assembles the static site, and deploys it. These checks catch some syntax and packaging errors; they are *not* a complete browser test suite.
+
+The package.json test script is currently a placeholder that exits with an error. Do not interpret it as a passing automated test suite.
+
+Before a release:
+
+- [ ] Verify the latest deployment workflow for the exact commit.
+- [ ] Load the live site in a fresh browser session and check the console.
+- [ ] Test the selected user journey on the actual target device/browser.
+- [ ] Test the hosted backend separately, including status and a valid AI request.
+- [ ] Confirm microphone/camera permission handling if the workflow uses those APIs.
+- [ ] Verify all external services and required credentials.
+- [ ] Test graceful behavior when the backend is unavailable or a permission is denied.
+- [ ] Make sure all feature descriptions match what was actually observed.
+
+---
+
+## Contributing safely
+
+JARVIS-AI contains many coupled modules, so small-looking changes can affect script order or feature behavior.
+
+1. Start from the latest known-good commit.
+2. Create a branch for one focused change.
+3. Trace imports, HTML references, dynamic loading, backend routes, and workflow copy lists before editing.
+4. Keep changes scoped and review the complete diff.
+5. Run the configured checks and manually test the affected workflow.
+6. Deploy only after the intended changes are reviewed.
+7. Keep rollback tied to the specific commit or pull request.
+
+Do not remove modules or assets until their use has been checked across the application and build workflow.
+
+---
+
+## License and credits
+
+This repository includes an MIT license. That license applies to this repository's covered code, subject to the license text; it does not override the licenses, terms, attribution requirements, or usage restrictions of bundled assets, dependencies, Google Gemini, Render, GitHub Pages, satellite-data providers, or other third-party services. Review those terms separately before distribution.
+
+---
+
+*JARVIS-AI — a modular AI cockpit built to bring more of the assistant experience into one place, while keeping clear boundaries between the browser, the cloud, and the local machine.*
