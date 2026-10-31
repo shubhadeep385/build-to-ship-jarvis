@@ -51,7 +51,7 @@ function run(command, timeout = 12000) {
 function reply(res, text, extra = {}) {
   return res.json({
     ok: true,
-    reply: text,
+    reply: String(text || "").replace(/\*\*/g, ""),
     ...extra
   });
 }
@@ -185,7 +185,10 @@ async function askOllama(message) {
         model: OLLAMA_MODEL,
         stream: false,
         messages: [
-          { role: "system", content: "You are JARVIS, a concise, helpful local personal AI assistant. Do not claim to control devices or perform actions unless JARVIS local tools confirm it." },
+          {
+            role: "system",
+            content: "You are JARVIS, a concise, helpful local personal AI assistant. When the user asks to generate, write, create, or fix code, provide complete working code in fenced code blocks with the language specified, plus brief usage instructions. Do not claim to control devices, execute code, or test code unless JARVIS local tools confirm it."
+          },
           { role: "user", content: message }
         ]
       }),
@@ -543,7 +546,7 @@ app.post("/api/command", async (req, res) => {
   if (fileResponse !== null) return fileResponse;
 
   // Greetings
-  if (has(query, ["hello", "hi", "hey", "good morning", "good afternoon", "good evening"])) {
+  if (/^(?:hello|hi|hey|good morning|good afternoon|good evening)[!. ]*$/i.test(query)) {
     return reply(res, "Good to hear from you. JARVIS is online and ready.");
   }
 

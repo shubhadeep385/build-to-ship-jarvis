@@ -3011,55 +3011,6 @@ body.thinking
 
 
 <!-- =======================================================
-     VOICE PANEL
-     ======================================================= -->
-
-<section
-    class="panel"
-    style="
-        left:16px;
-        bottom:84px;
-    "
->
-
-    <div class="panel-title">
-        VOICE ANALYZER
-    </div>
-
-    <div class="panel-header-line"></div>
-
-    <div class="voice-wave">
-
-        <span></span>
-        <span></span>
-        <span></span>
-        <span></span>
-        <span></span>
-        <span></span>
-        <span></span>
-        <span></span>
-        <span></span>
-        <span></span>
-        <span></span>
-
-    </div>
-
-    <div class="data-row">
-
-        <span>
-            CHANNEL
-        </span>
-
-        <strong id="voiceStatus">
-            READY
-        </strong>
-
-    </div>
-
-</section>
-
-
-<!-- =======================================================
      SENSOR PANEL
      ======================================================= -->
 
@@ -3297,7 +3248,6 @@ const commandInput   = document.getElementById("commandInput");
 const commandForm    = document.getElementById("commandForm");
 const voiceButton    = document.getElementById("voiceButton");
 const coreState      = document.getElementById("coreState");
-const voiceStatus    = document.getElementById("voiceStatus");
 const systemStatus   = document.getElementById("systemStatus");
 const loadValue      = document.getElementById("loadValue");
 const satCount       = document.getElementById("satCount");
@@ -3373,24 +3323,24 @@ document.getElementById("jarvisMusicNext").addEventListener("click", () => {
 });
 
 function showAssistantReply(text, state = "reply") {
+  text = String(text || "").replace(/\*\*/g, "");
   let panel = document.getElementById("assistantReply");
   if (!panel) {
     panel = document.createElement("div");
     panel.id = "assistantReply";
     Object.assign(panel.style, {
       position: "fixed",
-      left: "50%",
+      left: "18px",
       bottom: "92px",
-      transform: "translateX(-50%)",
-      width: "min(88vw, 680px)",
-      maxHeight: "24vh",
+      width: "min(680px, calc(100vw - 36px))",
+      maxHeight: "56vh",
       overflowY: "auto",
       padding: "12px 16px",
       boxSizing: "border-box",
       zIndex: "20",
       border: "1px solid #00d9ff",
       borderRadius: "10px",
-      background: "rgba(2, 12, 28, .94)",
+      background: "transparent",
       color: "#baf7ff",
       font: "14px/1.45 system-ui, sans-serif",
       whiteSpace: "pre-wrap",
@@ -3412,7 +3362,6 @@ function setState(state) {
   if (state === "listening") {
     document.body.classList.add("listening");
     coreState.textContent    = "LISTENING";
-    voiceStatus.textContent  = "LISTENING";
     systemStatus.textContent = "VOICE ACTIVE";
     return;
   }
@@ -3420,13 +3369,11 @@ function setState(state) {
   if (state === "thinking") {
     document.body.classList.add("thinking");
     coreState.textContent    = "PROCESSING";
-    voiceStatus.textContent  = "PROCESSING";
     systemStatus.textContent = "AI PROCESSING";
     return;
   }
 
   coreState.textContent    = "STANDBY";
-  voiceStatus.textContent  = "READY";
   systemStatus.textContent = "SYSTEM ONLINE";
 }
 
