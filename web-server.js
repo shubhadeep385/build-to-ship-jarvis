@@ -11,6 +11,12 @@ const ALLOWED_ORIGINS = new Set([
 const MAX_REQUESTS_PER_MINUTE = 20;
 const requestCounts = new Map();
 const JARVIS_MODEL = process.env.GEMINI_MODEL || "gemini-3.8-flash";
+const WINDOWS_DOWNLOADS = {
+  spotify: { file: "SpotifySetup.exe", url: "https://download.scdn.co/SpotifySetup.exe" },
+  discord: { file: "DiscordSetup.exe", url: "https://discord.com/api/download?platform=win" },
+  steam: { file: "SteamSetup.exe", url: "https://cdn.akamai.steamstatic.com/client/installer/SteamSetup.exe" },
+  ollama: { file: "OllamaSetup.exe", url: "https://ollama.com/download/OllamaSetup.exe" }
+};
 
 app.disable("x-powered-by");
 app.use(express.json({ limit: "16kb" }));
@@ -158,6 +164,24 @@ app.post("/api/command", async (req, res) => {
 
 app.get("/api/timers", (_req, res) => {
   res.json({ ok: true, timers: [], note: "Web timers are not synchronized in this safe web backend yet." });
+});
+
+app.post("/api/download", (req, res) => {
+  const appName = String(req.body?.app || "").trim().toLowerCase();
+  const installer = WINDOWS_DOWNLOADS[appName];
+  if (!installer) {
+    return res.status(400).json({
+      ok: false,
+      reply: `${appName || "That app"} does not have a supported official Windows installer.`
+    });
+  }
+  return res.json({
+    ok: true,
+    mode: "hosted-download",
+    url: installer.url,
+    file: installer.file,
+    reply: `Starting the official ${appName} download in your browser.`
+  });
 });
 
 app.post("/api/voice", (_req, res) => {

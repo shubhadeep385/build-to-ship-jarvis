@@ -81,6 +81,13 @@ async function downloadWindowsInstaller(appName) {
   if (!installer) {
     throw new Error(`${appName} does not have a supported direct Windows installer. Use its official store or website.`);
   }
+  if (!IS_WINDOWS) {
+    return {
+      hosted: true,
+      file: installer.file,
+      url: installer.url
+    };
+  }
   await fs.promises.mkdir(DOWNLOADS_DIR, { recursive: true });
   const response = await fetch(installer.url, { redirect: "follow" });
   if (!response.ok) throw new Error(`Official download returned HTTP ${response.status}.`);
@@ -775,6 +782,13 @@ app.post("/api/download", async (req, res) => {
   if (!appName) return res.status(400).json({ ok: false, reply: "Tell me which app to download." });
   try {
     const result = await downloadWindowsInstaller(appName);
+    if (result.hosted) {
+      return reply(res, `This hosted JARVIS server cannot save files to your device. Starting the official ${appName} download in your browser.`, {
+        mode: "hosted-download",
+        url: result.url,
+        file: result.file
+      });
+    }
     return reply(res, `${appName} installer downloaded to ${result.destination}. It was not opened or installed.`, {
       mode: "download",
       path: result.destination,

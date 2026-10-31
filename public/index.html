@@ -3521,6 +3521,17 @@ async function sendCommand(command) {
       });
       const data = await response.json();
       const message = data.reply || "The download did not return a result.";
+      if (response.ok && data.url) {
+        const link = document.createElement("a");
+        link.href = data.url;
+        link.download = data.file || "";
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.hidden = true;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      }
       showAssistantReply(message, response.ok ? "reply" : "error");
       speak(message);
     } catch (error) {
