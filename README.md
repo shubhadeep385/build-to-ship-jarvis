@@ -195,12 +195,6 @@ Do not remove modules or assets until their use has been checked across the appl
 
 ---
 
-## License and credits
-
-This repository includes an MIT license. That license applies to this repository's covered code, subject to the license text; it does not override the licenses, terms, attribution requirements, or usage restrictions of bundled assets, dependencies, Google Gemini, Render, GitHub Pages, satellite-data providers, or other third-party services. Review those terms separately before distribution.
-
----
-
 *JARVIS-AI — a modular AI cockpit built to bring more of the assistant experience into one place, while keeping clear boundaries between the browser, the cloud, and the local machine.*
 
 *Team Name : * Iron Man
