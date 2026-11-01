@@ -197,7 +197,7 @@ Do not remove modules or assets until their use has been checked across the appl
 
 *JARVIS-AI — a modular AI cockpit built to bring more of the assistant experience into one place, while keeping clear boundaries between the browser, the cloud, and the local machine.*
 
-*Team Name : * Iron Man
+*Team Name : * 3 IDIOTS
 
 *Team Members :*
  - [Shubhadeep Mukherjee](https://github.com/shubhadeep385)
