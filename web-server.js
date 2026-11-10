@@ -1,6 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import { GoogleGenAI } from "@google/genai";
+import { pruneExpiredRequests } from "./rate-limit.js";
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -10,6 +11,10 @@ const ALLOWED_ORIGINS = new Set([
 ].filter(Boolean));
 const MAX_REQUESTS_PER_MINUTE = 20;
 const requestCounts = new Map();
+const rateLimitCleanup = setInterval(() => {
+  pruneExpiredRequests(requestCounts, Date.now(), 60_000);
+}, 60_000);
+rateLimitCleanup.unref();
 const JARVIS_MODEL = process.env.GEMINI_MODEL || "gemini-3.8-flash";
 const WINDOWS_DOWNLOADS = {
   spotify: { file: "SpotifySetup.exe", url: "https://download.scdn.co/SpotifySetup.exe" },
